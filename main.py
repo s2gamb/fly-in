@@ -29,6 +29,21 @@ def main() -> None:
     for conn in parsed_map.connections:
         print(f"  - {conn.source} -> {conn.target} | Attributes: {conn.attributes}")
 
+    print("\n--- Running Graph Solver (Min-Cost Max-Flow) ---")
+    from src.solver import DroneSolver
+    solver = DroneSolver(parsed_map, max_turns=60)
+    total_turns, paths = solver.solve()
+
+    if total_turns == -1:
+        print("❌ Could not find a valid conflict-free route for all drones.")
+    else:
+        print(f"✅ Successfully scheduled all {parsed_map.nb_drones} drones in {total_turns} turns!\n")
+        print("Drone Trajectories:")
+        for drone_id, path in enumerate(paths, 1):
+            route_str = " -> ".join([f"[T{t}: {hub}]" for t, hub in path])
+            print(f"  Drone D{drone_id}: {route_str}")
+
 
 if __name__ == "__main__":
     main()
+
