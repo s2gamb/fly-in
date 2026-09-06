@@ -1,49 +1,126 @@
+"""Main entry point for Fly-in drone simulation system."""
+
 import sys
 import os
-from src.parser import parse_map_file
+import argparse
+from typing import Optional, List
+
+from src.parser import MapParser, MapData, ParsingError
+from src.solver import DroneSolver, SimulationResult
 
 
-def main() -> None:
-    if len(sys.argv) < 2:
-        print("Usage: python main.py <path_to_map_file>")
-        sys.exit(1)
+class SimulationRunner:
+    """Encapsulates parsing, execution, and output formatting for Fly-in simulations."""
 
-    map_path = sys.argv[1]
+    def __init__(self, map_path: str, verbose: bool = False, stats: bool = False) -> None:
+        """Initialize the runner with CLI options.
 
-    if not os.path.exists(map_path):
-        print(f"Error: File '{map_path}' not found.")
-        sys.exit(1)
+        Args:
+            map_path: Path to the input map file.
+            verbose: Enable detailed diagnostics.
+            stats: Enable secondary performance metrics display.
+        """
+        self.map_path = map_path
+        self.verbose = verbose
+        self.stats = stats
+        self.map_data: Optional[MapData] = None
+        self.result: Optional[SimulationResult] = None
 
-    parsed_map = parse_map_file(map_path)
+    def run(self) -> int:
+        """Execute the simulation pipeline.
 
-    print(f"Parsed map: {map_path}")
-    print(f"Number of drones: {parsed_map.nb_drones}")
-    print(f"Start Hub: {parsed_map.start_hub.name if parsed_map.start_hub else 'None'}")
-    print(f"End Hub: {parsed_map.end_hub.name if parsed_map.end_hub else 'None'}")
+        Returns:
+            Exit code (0 on success, 1 on error).
+        """
+        if not os.path.exists(self.map_path):
+            print(f"Error: Map file '{self.map_path}' not found.", file=sys.stderr)
+            return 1
 
-    print("\nHubs:")
-    for hub in parsed_map.hubs.values():
-        print(f"  - {hub.name} ({hub.hub_type}) at ({hub.x}, {hub.y}) | Attributes: {hub.attributes}")
-    
-    print("\nConnections:")
-    for conn in parsed_map.connections:
-        print(f"  - {conn.source} -> {conn.target} | Attributes: {conn.attributes}")
+        try:
+            parser = MapParser()
+            self.map_data = parser.parse_file(self.map_path)
+        except ParsingError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        except Exception as exc:
+            print(f"Unexpected error while parsing: {exc}", file=sys.stderr)
+            return 1
 
-    print("\n--- Running Graph Solver (Min-Cost Max-Flow) ---")
-    from src.solver import DroneSolver
-    solver = DroneSolver(parsed_map, max_turns=60)
-    total_turns, paths = solver.solve()
+        if self.verbose:
+            self._print_map_info()
 
-    if total_turns == -1:
-        print("❌ Could not find a valid conflict-free route for all drones.")
-    else:
-        print(f"✅ Successfully scheduled all {parsed_map.nb_drones} drones in {total_turns} turns!\n")
-        print("Drone Trajectories:")
-        for drone_id, path in enumerate(paths, 1):
-            route_str = " -> ".join([f"[T{t}: {hub}]" for t, hub in path])
-            print(f"  Drone D{drone_id}: {route_str}")
+        solver = DroneSolver(self.map_data)
+        self.result = solver.solve()
+
+        if not self.result:
+            print(
+                "Error: No conflict-free path exists to route all drones to the goal.",
+                file=sys.stderr,
+            )
+            return 1
+
+        self._print_simulation_output()
+
+        if self.stats or self.verbose:
+            self._print_statistics()
+
+        return 0
+
+    def _print_map_info(self) -> None:
+        """Print parsed map diagnostic information."""
+        assert self.map_data is not None
+        print(f"=== Map: {self.map_path} ===")
+        print(f"Drones: {self.map_data.nb_drones}")
+        start_name = self.map_data.start_hub.name if self.map_data.start_hub else "None"
+        end_name = self.map_data.end_hub.name if self.map_data.end_hub else "None"
+        print(f"Start Hub: {start_name} | End Hub: {end_name}")
+        print(f"Hub count: {len(self.map_data.hubs)}")
+        print(f"Connections count: {len(self.map_data.connections)}\n")
+
+    def _print_simulation_output(self) -> None:
+        """Print standard turn-by-turn simulation lines (Chapter VII.5)."""
+        assert self.result is not None
+        for line in self.result.turn_lines:
+            print(line)
+
+    def _print_statistics(self) -> None:
+        """Print secondary evaluation metrics (Chapter VII.6)."""
+        assert self.result is not None
+        assert self.map_data is not None
+        print("\n--- Simulation Metrics ---")
+        print(f"Total Simulation Turns: {self.result.total_turns}")
+        print(f"Average Turns per Drone: {self.result.avg_turns_per_drone}")
+        print(f"Total Path Cost: {self.result.total_cost:.1f}")
+
+        if self.verbose and self.result.paths:
+            print("\nDetailed Drone Trajectories:")
+            for drone_id, trajectory in self.result.paths.items():
+                route = " -> ".join([f"[T{t}: {loc}]" for t, loc in trajectory])
+                print(f"  D{drone_id}: {route}")
+
+
+def main(argv: Optional[List[str]] = None) -> None:
+    """Parse CLI arguments and run the simulation runner."""
+    parser = argparse.ArgumentParser(
+        description="Fly-in: High-performance multi-drone pathfinding & simulation."
+    )
+    parser.add_argument("map_file", help="Path to the map definition file.")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Display verbose diagnostic logs."
+    )
+    parser.add_argument(
+        "-s", "--stats", action="store_true", help="Display secondary simulation metrics."
+    )
+
+    args = parser.parse_args(argv)
+    runner = SimulationRunner(
+        map_path=args.map_file, verbose=args.verbose, stats=args.stats
+    )
+    exit_code = runner.run()
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
     main()
+
 
