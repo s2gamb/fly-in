@@ -25,6 +25,8 @@ class SimulationResult:
     paths: Dict[int, List[Tuple[int, str]]] = field(default_factory=dict)
     total_cost: float = 0.0
     avg_turns_per_drone: float = 0.0
+    graph: Optional[TimeExpandedGraph] = None
+    flow_snapshot: Optional[Dict[Tuple[str, str], int]] = None
 
 
 class DroneSolver:
@@ -122,6 +124,12 @@ class DroneSolver:
         start_name = self.map_data.start_hub.name
         end_name = self.map_data.end_hub.name
         target_flow = self.map_data.nb_drones
+        # Snapshot positive forward flows prior to path extraction
+        flow_snapshot: Dict[Tuple[str, str], int] = {}
+        for u_node, edges in graph.network.adj.items():
+            for edge in edges:
+                if edge.capacity > 0 and edge.flow > 0:
+                    flow_snapshot[(edge.u, edge.v)] = edge.flow
 
         # turn_moves[turn] = list of formatted movement tokens: ["D1-roof1", "D2-corridorA"]
         turn_moves: Dict[int, List[Tuple[int, str]]] = {}
@@ -238,5 +246,7 @@ class DroneSolver:
             paths=drone_trajectories,
             total_cost=total_cost,
             avg_turns_per_drone=round(avg_turns, 2),
+            graph=graph,
+            flow_snapshot=flow_snapshot,
         )
 
