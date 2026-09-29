@@ -3,4 +3,5 @@ tests
 src/*/__pycache__
 __pycache__
 scratch
+maps/challenger/02_test.txt
 
