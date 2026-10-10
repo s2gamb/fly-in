@@ -3,6 +3,7 @@ import os
 from typing import Optional, List
 import argparse
 
+from src2.solver import DroneSolver
 from src2.parser import MapParser, ParsingError
 
 
@@ -23,8 +24,8 @@ class SimulationRunner:
         except Exception as exc:
             print(f"Unexpected error while parsing: {exc}", file=sys.stderr)
             return 1
-        # debug
-        print(self.map_data)
+        solver = DroneSolver(self.map_data)
+        self.result = solver.solve()
         return 0
 
 
