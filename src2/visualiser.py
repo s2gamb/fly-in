@@ -1,3 +1,4 @@
+import math
 import sys
 
 import matplotlib.pyplot as plt
@@ -13,15 +14,47 @@ class Visualiser:
         self.ax = None
         self.current_turn = 0
         self.drone_locs = self._index_drone_locations()
+        self.btn_next = None
+        self.drone_artists = []
 
     def _index_drone_locations(self):
         loc_map: dict[int, dict[int, str]] = {}
         for drone_id in range(1, self.map_data.nb_drones + 1):
             loc_map[drone_id] = {}
-            #TODO: handle no result case
             traj = self.result.paths[drone_id]
             traj = dict(traj)
-            print(traj)
+            curr_loc = self.map_data.start_hub.name
+            for turn in range(self.result.total_turns + 1):
+                if turn in traj:
+                    curr_loc = traj[turn]
+                loc_map[drone_id][turn] = curr_loc
+        return loc_map
+
+    def _get_drone_coordinates(
+        self, drone_id: int, turn: int, hub_occupants: dict
+    ) -> tuple[float, float]:
+        loc = self.drone_locs.get(drone_id, {}).get(turn, "")
+        hubs = self.map_data.hubs
+        if loc in hubs:
+            hub = hubs[loc]
+            occupants = hub_occupants.get(loc, [drone_id])
+            num_occ = len(occupants)
+            if num_occ <= 1:
+                return float(hub.x), float(hub.y)
+            idx = occupants.index(drone_id)  # if drone_id not in occupants, this will raise ValueError
+            angle = (2.0 * math.pi * idx) / num_occ
+            radius = 0.3
+            x_offset = radius * math.cos(angle)
+            y_offset = radius * math.sin(angle)
+            return float(hub.x) + x_offset, float(hub.y) + y_offset
+        elif "-" in loc:
+            parts = loc.split("-")
+            u_name, v_name = parts[0], parts[1]
+            if u_name in hubs and v_name in hubs:
+                u_hub = hubs[u_name]
+                v_hub = hubs[v_name]
+                return (float(u_hub.x) + float(v_hub.x)) / 2.0, (float(u_hub.y) + float(v_hub.y)) / 2.0
+        return 0.0, 0.0
 
     def render(self):
         self.fig = plt.figure(figsize=self.figsize, dpi=100)
@@ -46,7 +79,8 @@ class Visualiser:
             self.ax.plot(
                 [hub1.x, hub2.x],
                 [hub1.y, hub2.y],
-                color="#94a3b8",
+                # color="#94a3b8",
+                color="#000000",
                 linewidth=3.5,
                 zorder=1,
             )
@@ -62,9 +96,60 @@ class Visualiser:
             )
             self.ax.add_patch(circle)
         self._update_turn_display(self.current_turn)
+        self._setup_interactive_widgets()
+
+    def _setup_interactive_widgets(self):
+        ax_next = self.fig.add_axes([0.85, 0.05, 0.1, 0.075])
+        self.btn_next = plt.Button(ax_next, "Next Turn")
+        self.btn_next.on_clicked(lambda event: self._on_next_turn())
+
+    def _on_next_turn(self):
+        turn = (self.current_turn + 1) % (self.result.total_turns + 1)
+        self._update_turn_display(turn)
+        plt.gcf().canvas.draw()
+        plt.gcf().canvas.flush_events()
 
     def _update_turn_display(self, turn: int) -> None:
         self.current_turn = turn
+        for artist in self.drone_artists:
+            artist[0].remove()  # Remove scatter
+            artist[1].remove()  # Remove text label
+        self.drone_artists.clear()
+        end_name = self.map_data.end_hub.name
+        hub_occupants = {h: [] for h in self.map_data.hubs}
+        transit_drones = []
+        drones_at_goal = 0
+        for drone_id in range(1, self.map_data.nb_drones + 1):
+            loc = self.drone_locs.get(drone_id, {}).get(turn, "")
+            if loc in hub_occupants:
+                hub_occupants[loc].append(drone_id)
+                if loc == end_name:
+                    drones_at_goal += 1
+            elif "-" in loc:
+                transit_drones.append((drone_id, loc))
+        for drone_id in range(1, self.map_data.nb_drones + 1):
+            loc = self.drone_locs.get(drone_id, {}).get(turn, "")
+            dx, dy = self._get_drone_coordinates(drone_id, turn, hub_occupants)
+            sc = self.ax.scatter(
+                dx,
+                dy,
+                s=130,
+                color="#0000ff",
+                edgecolor="#ffffff",
+                linewidth=1.5,
+                zorder=3,
+            )
+            lbl = self.ax.text(
+                dx,
+                dy,
+                str(drone_id),
+                fontsize=9,
+                color="#ffffff",
+                ha="center",
+                va="center",
+                zorder=4,
+            )
+            self.drone_artists.append((sc, lbl))
 
     def visualise(self):
         if self.fig is None:
