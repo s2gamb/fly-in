@@ -1,37 +1,44 @@
 import math
 import sys
+from typing import Any
 
-import matplotlib.pyplot as plt
-from matplotlib.ticker import MultipleLocator
+import matplotlib.pyplot as plt  # type: ignore[import-untyped]
+from matplotlib.ticker import MultipleLocator  # type: ignore[import-untyped]
+
+from src.parser import MapData
+from src.solver import SimulationResult
 
 
 class Visualiser:
-    def __init__(self, map_data, result) -> None:
+    def __init__(self, map_data: MapData, result: SimulationResult) -> None:
         self.map_data = map_data
         self.result = result
-        self.figsize = (12.0, 9.0)
-        self.fig = None
-        self.ax = None
-        self.current_turn = 0
-        self.drone_locs = self._index_drone_locations()
-        self.btn_next = None
-        self.drone_artists = []
+        self.figsize: tuple[float, float] = (12.0, 9.0)
+        self.fig: Any = None
+        self.ax: Any = None
+        self.current_turn: int = 0
+        self.drone_locs: dict[int, dict[int, str]] = (
+            self._index_drone_locations()
+        )
+        self.btn_next: Any = None
+        self.drone_artists: list[tuple[Any, Any]] = []
 
-    def _index_drone_locations(self):
+    def _index_drone_locations(self) -> dict[int, dict[int, str]]:
         loc_map: dict[int, dict[int, str]] = {}
+        assert self.map_data.start_hub is not None
         for drone_id in range(1, self.map_data.nb_drones + 1):
             loc_map[drone_id] = {}
             traj = self.result.paths[drone_id]
-            traj = dict(traj)
+            traj_dict = dict(traj)
             curr_loc = self.map_data.start_hub.name
             for turn in range(self.result.total_turns + 1):
-                if turn in traj:
-                    curr_loc = traj[turn]
+                if turn in traj_dict:
+                    curr_loc = traj_dict[turn]
                 loc_map[drone_id][turn] = curr_loc
         return loc_map
 
     def _get_drone_coordinates(
-        self, drone_id: int, turn: int, hub_occupants: dict
+        self, drone_id: int, turn: int, hub_occupants: dict[str, list[int]]
     ) -> tuple[float, float]:
         loc = self.drone_locs.get(drone_id, {}).get(turn, "")
         hubs = self.map_data.hubs
@@ -60,7 +67,7 @@ class Visualiser:
                 ) / 2.0
         return 0.0, 0.0
 
-    def render(self):
+    def render(self) -> None:
         self.fig = plt.figure(figsize=self.figsize, dpi=100)
         self.ax = self.fig.add_axes([0.08, 0.18, 0.74, 0.74])
         self.ax.set_facecolor("#f8fafc")
@@ -102,12 +109,12 @@ class Visualiser:
         self._update_turn_display(self.current_turn)
         self._setup_interactive_widgets()
 
-    def _setup_interactive_widgets(self):
+    def _setup_interactive_widgets(self) -> None:
         ax_next = self.fig.add_axes([0.85, 0.05, 0.1, 0.075])
         self.btn_next = plt.Button(ax_next, "Next Turn")
         self.btn_next.on_clicked(lambda event: self._on_next_turn())
 
-    def _on_next_turn(self):
+    def _on_next_turn(self) -> None:
         turn = (self.current_turn + 1) % (self.result.total_turns + 1)
         self._update_turn_display(turn)
         plt.gcf().canvas.draw()
@@ -119,9 +126,12 @@ class Visualiser:
             artist[0].remove()  # Remove scatter
             artist[1].remove()  # Remove text label
         self.drone_artists.clear()
+        assert self.map_data.end_hub is not None
         end_name = self.map_data.end_hub.name
-        hub_occupants = {h: [] for h in self.map_data.hubs}
-        transit_drones = []
+        hub_occupants: dict[str, list[int]] = {
+            h: [] for h in self.map_data.hubs
+        }
+        transit_drones: list[tuple[int, str]] = []
         drones_at_goal = 0
         for drone_id in range(1, self.map_data.nb_drones + 1):
             loc = self.drone_locs.get(drone_id, {}).get(turn, "")
@@ -155,7 +165,7 @@ class Visualiser:
             )
             self.drone_artists.append((sc, lbl))
 
-    def visualise(self):
+    def visualise(self) -> None:
         if self.fig is None:
             self.render()
         try:

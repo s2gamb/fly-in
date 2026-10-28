@@ -3,20 +3,23 @@ import os
 from typing import Optional, List
 import argparse
 
-from src2.solver import DroneSolver
-from src2.parser import MapParser, ParsingError
-from src2.visualiser import Visualiser
+from src.solver import DroneSolver, SimulationResult
+from src.parser import MapParser, ParsingError, MapData
+from src.visualiser import Visualiser
 
 
 class SimulationRunner:
     def __init__(self, map_path: str) -> None:
         self.map_path = map_path
+        self.map_data: MapData | None = None
+        self.result: SimulationResult | None = None
 
     def _visualise_spatial_graph(self) -> None:
-        visualizer = Visualiser(self.map_data, self.result)
-        visualizer.visualise()
+        if self.map_data is not None and self.result is not None:
+            visualizer = Visualiser(self.map_data, self.result)
+            visualizer.visualise()
 
-    def run(self) -> None:
+    def run(self) -> int:
         if not os.path.exists(self.map_path):
             print(
                 f"Error: Map file '{self.map_path}' not found.",

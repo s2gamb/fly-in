@@ -2,7 +2,7 @@ import math
 from collections import deque
 
 from dataclasses import dataclass
-from src2.parser import MapData
+from src.parser import MapData, Hub
 
 
 @dataclass
@@ -17,7 +17,7 @@ class FlowEdge:
 
 class MCMFNetwork:
     def __init__(self) -> None:
-        self.adj = {}
+        self.adj: dict[str, list[FlowEdge]] = {}
 
     def add_edge(self, u: str, v: str, capacity: int, cost: float) -> None:
         self.adj.setdefault(u, [])
@@ -47,9 +47,11 @@ class MCMFNetwork:
         total_flow = 0
         total_cost = 0.0
         while total_flow < target_flow:
-            dist = {node: math.inf for node in self.adj}
-            parent_edge = {node: None for node in self.adj}
-            in_queue = {node: False for node in self.adj}
+            dist: dict[str, float] = {node: math.inf for node in self.adj}
+            parent_edge: dict[str, FlowEdge | None] = {
+                node: None for node in self.adj
+            }
+            in_queue: dict[str, bool] = {node: False for node in self.adj}
             queue = deque([source])
             dist[source] = 0.0
             in_queue[source] = True
@@ -70,18 +72,18 @@ class MCMFNetwork:
                 break
             curr = sink
             while curr != source:
-                edge = parent_edge[curr]
-                assert edge is not None
-                edge.flow += 1
-                self.adj[edge.v][edge.rev_index].flow -= 1
-                curr = edge.u
+                p_edge = parent_edge[curr]
+                assert p_edge is not None
+                p_edge.flow += 1
+                self.adj[p_edge.v][p_edge.rev_index].flow -= 1
+                curr = p_edge.u
             total_flow += 1
             total_cost += dist[sink]
         return total_flow, total_cost
 
 
 class TimeExpandedGraph:
-    def __init__(self, map_data: MapData, max_turns: int):
+    def __init__(self, map_data: MapData, max_turns: int) -> None:
         self.map_data = map_data
         self.max_turns = max_turns
         self.network = MCMFNetwork()
@@ -89,12 +91,13 @@ class TimeExpandedGraph:
         self.sink = "SINK"
         self._build()
 
-    def _get_zone_type(self, hub):
+    def _get_zone_type(self, hub: Hub) -> str:
         return hub.zone
 
     def _build(self) -> None:
         hubs = self.map_data.hubs
         nb_drones = self.map_data.nb_drones
+        assert self.map_data.start_hub is not None
         start_name = self.map_data.start_hub.name
         self.network.add_edge(
             self.source, f"{start_name}_out[0]", capacity=nb_drones, cost=0.0
