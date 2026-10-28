@@ -5,6 +5,7 @@ import argparse
 
 from src2.solver import DroneSolver
 from src2.parser import MapParser, ParsingError
+from src2.visualiser import Visualiser
 
 
 class SimulationRunner:
@@ -14,6 +15,10 @@ class SimulationRunner:
     def _print_simulation_output(self) -> None:
         for line in self.result.turn_lines:
             print(line)
+
+    def _visualise_spatial_graph(self) -> None:
+        visualizer = Visualiser(self.map_data, self.result)
+        visualizer.visualise()
 
     def run(self) -> None:
         if not os.path.exists(self.map_path):
@@ -37,6 +42,7 @@ class SimulationRunner:
             )
             return 1
         self._print_simulation_output()
+        self._visualise_spatial_graph()
         return 0
 
 
