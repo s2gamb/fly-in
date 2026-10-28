@@ -6,7 +6,7 @@ from matplotlib.ticker import MultipleLocator
 
 
 class Visualiser:
-    def __init__(self, map_data, result):
+    def __init__(self, map_data, result) -> None:
         self.map_data = map_data
         self.result = result
         self.figsize = (12.0, 9.0)
@@ -41,7 +41,9 @@ class Visualiser:
             num_occ = len(occupants)
             if num_occ <= 1:
                 return float(hub.x), float(hub.y)
-            idx = occupants.index(drone_id)  # if drone_id not in occupants, this will raise ValueError
+            idx = occupants.index(
+                drone_id
+            )  # if drone_id not in occupants, this will raise ValueError
             angle = (2.0 * math.pi * idx) / num_occ
             radius = 0.3
             x_offset = radius * math.cos(angle)
@@ -53,7 +55,9 @@ class Visualiser:
             if u_name in hubs and v_name in hubs:
                 u_hub = hubs[u_name]
                 v_hub = hubs[v_name]
-                return (float(u_hub.x) + float(v_hub.x)) / 2.0, (float(u_hub.y) + float(v_hub.y)) / 2.0
+                return (float(u_hub.x) + float(v_hub.x)) / 2.0, (
+                    float(u_hub.y) + float(v_hub.y)
+                ) / 2.0
         return 0.0, 0.0
 
     def render(self):

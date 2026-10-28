@@ -23,15 +23,27 @@ class MCMFNetwork:
         self.adj.setdefault(u, [])
         self.adj.setdefault(v, [])
         forward = FlowEdge(
-            u=u, v=v, capacity=capacity, flow=0, cost=cost, rev_index=len(self.adj[v])
+            u=u,
+            v=v,
+            capacity=capacity,
+            flow=0,
+            cost=cost,
+            rev_index=len(self.adj[v]),
         )
         backward = FlowEdge(
-            u=v, v=u, capacity=0, flow=0, cost=-cost, rev_index=len(self.adj[u])
+            u=v,
+            v=u,
+            capacity=0,
+            flow=0,
+            cost=-cost,
+            rev_index=len(self.adj[u]),
         )
         self.adj[u].append(forward)
         self.adj[v].append(backward)
 
-    def solve_mcmf(self, source: str, sink: str, target_flow: int) -> tuple[int, float]:
+    def solve_mcmf(
+        self, source: str, sink: str, target_flow: int
+    ) -> tuple[int, float]:
         total_flow = 0
         total_cost = 0.0
         while total_flow < target_flow:
@@ -45,7 +57,10 @@ class MCMFNetwork:
                 u = queue.popleft()
                 in_queue[u] = False
                 for edge in self.adj[u]:
-                    if edge.capacity - edge.flow > 0 and dist[u] + edge.cost < dist[edge.v]:
+                    if (
+                        edge.capacity - edge.flow > 0
+                        and dist[u] + edge.cost < dist[edge.v]
+                    ):
                         dist[edge.v] = dist[u] + edge.cost
                         parent_edge[edge.v] = edge
                         if not in_queue[edge.v]:
@@ -81,7 +96,9 @@ class TimeExpandedGraph:
         hubs = self.map_data.hubs
         nb_drones = self.map_data.nb_drones
         start_name = self.map_data.start_hub.name
-        self.network.add_edge(self.source, f"{start_name}_out[0]", capacity=nb_drones, cost=0.0)
+        self.network.add_edge(
+            self.source, f"{start_name}_out[0]", capacity=nb_drones, cost=0.0
+        )
         for t in range(self.max_turns + 1):
             for name, hub in hubs.items():
                 zone = self._get_zone_type(hub)
@@ -89,15 +106,26 @@ class TimeExpandedGraph:
                     continue
                 u_in = f"{name}_in[{t}]"
                 u_out = f"{name}_out[{t}]"
-                cap = nb_drones if hub.hub_type in ("start_hub", "end_hub") else hub.max_drones
+                cap = (
+                    nb_drones
+                    if hub.hub_type in ("start_hub", "end_hub")
+                    else hub.max_drones
+                )
                 self.network.add_edge(u_in, u_out, capacity=cap, cost=0.0)
                 if hub.hub_type == "end_hub":
-                    self.network.add_edge(u_out, self.sink, capacity=nb_drones, cost=0.0)
+                    self.network.add_edge(
+                        u_out, self.sink, capacity=nb_drones, cost=0.0
+                    )
                 if t < self.max_turns and hub.hub_type != "end_hub":
-                    self.network.add_edge(u_out, f"{name}_in[{t+1}]", capacity=cap, cost=1.0)
+                    self.network.add_edge(
+                        u_out, f"{name}_in[{t+1}]", capacity=cap, cost=1.0
+                    )
         for conn in self.map_data.connections:
             link_cap = conn.max_link_capacity
-            for u_name, v_name in [(conn.source, conn.target), (conn.target, conn.source)]:
+            for u_name, v_name in [
+                (conn.source, conn.target),
+                (conn.target, conn.source),
+            ]:
                 v_zone = self._get_zone_type(hubs[v_name])
                 if v_zone == "blocked":
                     continue
@@ -107,7 +135,10 @@ class TimeExpandedGraph:
                         cost = 0.5 if v_zone == "priority" else 1.0
                         if t + 1 <= self.max_turns:
                             self.network.add_edge(
-                                u_out, f"{v_name}_in[{t+1}]", capacity=link_cap, cost=cost
+                                u_out,
+                                f"{v_name}_in[{t+1}]",
+                                capacity=link_cap,
+                                cost=cost,
                             )
                     elif v_zone == "restricted":
                         if t + 2 <= self.max_turns:
@@ -116,5 +147,8 @@ class TimeExpandedGraph:
                                 u_out, transit, capacity=link_cap, cost=1.0
                             )
                             self.network.add_edge(
-                                transit, f"{v_name}_in[{t+2}]", capacity=link_cap, cost=1.0
+                                transit,
+                                f"{v_name}_in[{t+2}]",
+                                capacity=link_cap,
+                                cost=1.0,
                             )

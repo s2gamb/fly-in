@@ -12,17 +12,16 @@ class SimulationRunner:
     def __init__(self, map_path: str) -> None:
         self.map_path = map_path
 
-    def _print_simulation_output(self) -> None:
-        for line in self.result.turn_lines:
-            print(line)
-
     def _visualise_spatial_graph(self) -> None:
         visualizer = Visualiser(self.map_data, self.result)
         visualizer.visualise()
 
     def run(self) -> None:
         if not os.path.exists(self.map_path):
-            print(f"Error: Map file '{self.map_path}' not found.", file=sys.stderr)
+            print(
+                f"Error: Map file '{self.map_path}' not found.",
+                file=sys.stderr,
+            )
             return 1
         try:
             parser = MapParser()
@@ -37,11 +36,12 @@ class SimulationRunner:
         self.result = solver.solve()
         if not self.result:
             print(
-                "Error: No conflict-free path exists to route all drones to the goal.",
+                "Error: No conflict-free path exists.",
                 file=sys.stderr,
             )
             return 1
-        self._print_simulation_output()
+        for line in self.result.turn_lines:
+            print(line)
         self._visualise_spatial_graph()
         return 0
 

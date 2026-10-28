@@ -11,13 +11,13 @@ class SimulationResult:
     turn_lines: list[str]
     paths: dict[int, list[tuple[int, str]]] = field(default_factory=dict)
     total_cost: float = 0.0
-    avg_turns_per_drone: float = 0.0,
+    avg_turns_per_drone: float = (0.0,)
     graph: TimeExpandedGraph | None = None
     flow_snapshot: dict[tuple[int, str], int] | None = None
 
 
 class DroneSolver:
-    def __init__(self, map_data: MapData, default_turns = 60) -> None:
+    def __init__(self, map_data: MapData, default_turns=60) -> None:
         self.map_data = map_data
         self.default_turns = default_turns
 
@@ -49,20 +49,26 @@ class DroneSolver:
                     queue.append(neighbor)
         return False
 
-    def solve(self, max_allowed_turns = 500) -> SimulationResult | None:
+    def solve(self, max_allowed_turns=500) -> SimulationResult | None:
         if not self.is_connected():
             return None
         target_flow = self.map_data.nb_drones
-        current_max_turns = max(self.default_turns, len(self.map_data.hubs) + target_flow)
+        current_max_turns = max(
+            self.default_turns, len(self.map_data.hubs) + target_flow
+        )
         while current_max_turns <= max_allowed_turns:
-            graph = TimeExpandedGraph(self.map_data, max_turns=current_max_turns)
+            graph = TimeExpandedGraph(
+                self.map_data, max_turns=current_max_turns
+            )
             flow, cost = graph.network.solve_mcmf(
                 graph.source,
                 graph.sink,
                 target_flow=target_flow,
             )
             if flow == target_flow:
-                return self._extract_simulation_result(graph, cost, current_max_turns)
+                return self._extract_simulation_result(
+                    graph, cost, current_max_turns
+                )
             if current_max_turns >= max_allowed_turns:
                 break
             current_max_turns = min(current_max_turns + 30, max_allowed_turns)
@@ -108,7 +114,10 @@ class DroneSolver:
                 t = int(source_parts[1].rstrip("]"))
                 if next_node == f"{source_name}_in[{t+1}]":
                     for in_edge in graph.network.adj[next_node]:
-                        if in_edge.v == f"{source_name}_out[{t+1}]" and in_edge.flow > 0:
+                        if (
+                            in_edge.v == f"{source_name}_out[{t+1}]"
+                            and in_edge.flow > 0
+                        ):
                             in_edge.flow -= 1
                             break
                     curr = f"{source_name}_out[{t+1}]"
@@ -118,11 +127,19 @@ class DroneSolver:
                     token = f"D{drone_id}-{source_name}-{target_name}"
                     turn_moves.setdefault(t + 1, []).append((drone_id, token))
                     for tr_edge in graph.network.adj[next_node]:
-                        if tr_edge.v == f"{target_name}_in[{t+2}]" and tr_edge.flow > 0:
+                        if (
+                            tr_edge.v == f"{target_name}_in[{t+2}]"
+                            and tr_edge.flow > 0
+                        ):
                             tr_edge.flow -= 1
                             break
-                    for in_edge in graph.network.adj[f"{target_name}_in[{t+2}]"]:
-                        if in_edge.v == f"{target_name}_out[{t+2}]" and in_edge.flow > 0:
+                    for in_edge in graph.network.adj[
+                        f"{target_name}_in[{t+2}]"
+                    ]:
+                        if (
+                            in_edge.v == f"{target_name}_out[{t+2}]"
+                            and in_edge.flow > 0
+                        ):
                             in_edge.flow -= 1
                             break
                     token2 = f"D{drone_id}-{target_name}"
@@ -133,7 +150,10 @@ class DroneSolver:
                 else:
                     target_name = next_node.split("_in[")[0]
                     for in_edge in graph.network.adj[next_node]:
-                        if in_edge.v == f"{target_name}_out[{t+1}]" and in_edge.flow > 0:
+                        if (
+                            in_edge.v == f"{target_name}_out[{t+1}]"
+                            and in_edge.flow > 0
+                        ):
                             in_edge.flow -= 1
                             break
                     token = f"D{drone_id}-{target_name}"
@@ -151,7 +171,11 @@ class DroneSolver:
                 move_sorted = sorted(moves, key=lambda x: x[0])
                 line = " ".join(m[1] for m in move_sorted)
                 formatted_turn_lines.append(line)
-        avg_turns = sum(delivery_turns) / len(delivery_turns) if delivery_turns else 0.0
+        avg_turns = (
+            sum(delivery_turns) / len(delivery_turns)
+            if delivery_turns
+            else 0.0
+        )
         return SimulationResult(
             total_turns=len(formatted_turn_lines),
             turn_lines=formatted_turn_lines,
