@@ -2,8 +2,8 @@ import math
 import sys
 from typing import Any
 
-import matplotlib.pyplot as plt  # type: ignore[import-untyped]
-from matplotlib.ticker import MultipleLocator  # type: ignore[import-untyped]
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
 
 from src.parser import MapData
 from src.solver import SimulationResult
