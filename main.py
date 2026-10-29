@@ -9,9 +9,8 @@ from src.visualiser import Visualiser
 
 
 class SimulationRunner:
-    def __init__(self, map_path: str, seed: int | None = None) -> None:
+    def __init__(self, map_path: str) -> None:
         self.map_path = map_path
-        self.seed = seed
         self.map_data: MapData | None = None
         self.simulation: DroneSimulation | None = None
 
@@ -46,7 +45,7 @@ class SimulationRunner:
         except Exception as exc:
             print(f"Unexpected error while parsing: {exc}", file=sys.stderr)
             return 1
-        self.simulation = DroneSimulation(self.map_data, seed=self.seed)
+        self.simulation = DroneSimulation(self.map_data)
         print("Click 'Next Turn' to schedule and execute the next turn.")
         self._visualise_spatial_graph()
         return 0
@@ -57,13 +56,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         description="Fly-in: drone pathfinding and simulation tool."
     )
     parser.add_argument("map_file", help="Path to the map definition file.")
-    parser.add_argument(
-        "--seed",
-        type=int,
-        help="Seed the random walk so a run can be reproduced.",
-    )
     args = parser.parse_args(argv)
-    runner = SimulationRunner(map_path=args.map_file, seed=args.seed)
+    runner = SimulationRunner(map_path=args.map_file)
     return runner.run()
 
 
