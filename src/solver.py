@@ -11,13 +11,10 @@ class SimulationResult:
     turn_lines: list[str]
     paths: dict[int, list[tuple[int, str]]] = field(default_factory=dict)
     total_cost: float = 0.0
-    avg_turns_per_drone: float = 0.0
-    graph: TimeExpandedGraph | None = None
-    flow_snapshot: dict[tuple[str, str], int] | None = None
 
 
 class DroneSolver:
-    def __init__(self, map_data: MapData, default_turns: int = 60) -> None:
+    def __init__(self, map_data: MapData, default_turns: int = 10) -> None:
         self.map_data = map_data
         self.default_turns = default_turns
 
@@ -55,43 +52,34 @@ class DroneSolver:
         if not self.is_connected():
             return None
         target_flow = self.map_data.nb_drones
-        current_max_turns = max(
-            self.default_turns, len(self.map_data.hubs) + target_flow
-        )
+        current_max_turns = self.default_turns
         while current_max_turns <= max_allowed_turns:
             graph = TimeExpandedGraph(
                 self.map_data, max_turns=current_max_turns
             )
-            flow, cost = graph.network.solve_mcmf(
+            flow = graph.network.solve_mcmf(
                 graph.source,
                 graph.sink,
                 target_flow=target_flow,
             )
             if flow == target_flow:
-                return self._extract_simulation_result(
-                    graph, cost, current_max_turns
-                )
+                return self._extract_simulation_result(graph)
             if current_max_turns >= max_allowed_turns:
                 break
             current_max_turns = min(current_max_turns + 30, max_allowed_turns)
         return None
 
     def _extract_simulation_result(
-        self, graph: TimeExpandedGraph, total_cost: float, max_turns: int
+        self, graph: TimeExpandedGraph
     ) -> SimulationResult:
         assert self.map_data.start_hub is not None
         assert self.map_data.end_hub is not None
         start_name = self.map_data.start_hub.name
         end_name = self.map_data.end_hub.name
         target_flow = self.map_data.nb_drones
-        flow_snapshot: dict[tuple[str, str], int] = {}
-        for edges in graph.network.adj.values():
-            for edge in edges:
-                if edge.flow > 0:
-                    flow_snapshot[(edge.u, edge.v)] = edge.flow
         turn_moves: dict[int, list[tuple[int, str]]] = {}
         drone_trajectories: dict[int, list[tuple[int, str]]] = {}
-        delivery_turns: list[int] = []
+        # For each drone
         for drone_id in range(1, target_flow + 1):
             curr = f"{start_name}_out[0]"
             trajectory: list[tuple[int, str]] = [(0, start_name)]
@@ -116,16 +104,19 @@ class DroneSolver:
                 source_parts = curr.split("_out[")
                 source_name = source_parts[0]
                 t = int(source_parts[1].rstrip("]"))
+                # Wait case
                 if next_node == f"{source_name}_in[{t+1}]":
-                    for in_edge in graph.network.adj[next_node]:
+                    for edge in graph.network.adj[next_node]:
                         if (
-                            in_edge.v == f"{source_name}_out[{t+1}]"
-                            and in_edge.flow > 0
+                            edge.v == f"{source_name}_out[{t+1}]"
+                            and edge.flow > 0
                         ):
-                            in_edge.flow -= 1
+                            edge.flow -= 1
                             break
                     curr = f"{source_name}_out[{t+1}]"
+                    # Update trajectory
                     trajectory.append((t + 1, source_name))
+                # Transit case
                 elif next_node.startswith(f"transit_{source_name}->"):
                     target_name = next_node.split("->")[1].split("[")[0]
                     token = f"D{drone_id}-{source_name}-{target_name}"
@@ -137,37 +128,38 @@ class DroneSolver:
                         ):
                             tr_edge.flow -= 1
                             break
-                    for in_edge in graph.network.adj[
+                    for edge in graph.network.adj[
                         f"{target_name}_in[{t+2}]"
                     ]:
                         if (
-                            in_edge.v == f"{target_name}_out[{t+2}]"
-                            and in_edge.flow > 0
+                            edge.v == f"{target_name}_out[{t+2}]"
+                            and edge.flow > 0
                         ):
-                            in_edge.flow -= 1
+                            edge.flow -= 1
                             break
                     token2 = f"D{drone_id}-{target_name}"
                     turn_moves.setdefault(t + 2, []).append((drone_id, token2))
                     curr = f"{target_name}_out[{t+2}]"
+                    # Update trajectory
                     trajectory.append((t + 1, f"{source_name}-{target_name}"))
                     trajectory.append((t + 2, target_name))
+                # Default transition
                 else:
                     target_name = next_node.split("_in[")[0]
-                    for in_edge in graph.network.adj[next_node]:
+                    for edge in graph.network.adj[next_node]:
                         if (
-                            in_edge.v == f"{target_name}_out[{t+1}]"
-                            and in_edge.flow > 0
+                            edge.v == f"{target_name}_out[{t+1}]"
+                            and edge.flow > 0
                         ):
-                            in_edge.flow -= 1
+                            edge.flow -= 1
                             break
                     token = f"D{drone_id}-{target_name}"
                     turn_moves.setdefault(t + 1, []).append((drone_id, token))
                     curr = f"{target_name}_out[{t+1}]"
+                    # Update trajectory
                     trajectory.append((t + 1, target_name))
             drone_trajectories[drone_id] = trajectory
-            final_turn = trajectory[-1][0]
-            delivery_turns.append(final_turn)
-        max_turn = max(delivery_turns) if delivery_turns else 0
+        max_turn = max(turn_moves, default=0)
         formatted_turn_lines: list[str] = []
         for turn_idx in range(1, max_turn + 1):
             moves = turn_moves.get(turn_idx, [])
@@ -175,17 +167,8 @@ class DroneSolver:
                 move_sorted = sorted(moves, key=lambda x: x[0])
                 line = " ".join(m[1] for m in move_sorted)
                 formatted_turn_lines.append(line)
-        avg_turns = (
-            sum(delivery_turns) / len(delivery_turns)
-            if delivery_turns
-            else 0.0
-        )
         return SimulationResult(
-            total_turns=len(formatted_turn_lines),
+            total_turns=max_turn,
             turn_lines=formatted_turn_lines,
             paths=drone_trajectories,
-            total_cost=total_cost,
-            avg_turns_per_drone=round(avg_turns, 2),
-            graph=graph,
-            flow_snapshot=flow_snapshot,
         )
