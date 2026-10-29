@@ -1,46 +1,36 @@
 import math
 import sys
-from typing import Any
+from typing import Any, Callable
 
 import matplotlib.pyplot as plt
+from matplotlib.backend_bases import MouseEvent
 from matplotlib.ticker import MultipleLocator
 
 from src.parser import MapData
-from src.solver import SimulationResult
+from src.solver import DroneSimulation, TurnSnapshot
 
 
 class Visualiser:
-    def __init__(self, map_data: MapData, result: SimulationResult) -> None:
+    def __init__(
+        self,
+        map_data: MapData,
+        simulation: DroneSimulation,
+        on_turn: Callable[[TurnSnapshot], None] | None = None,
+    ) -> None:
         self.map_data = map_data
-        self.result = result
+        self.simulation = simulation
+        self.on_turn = on_turn
         self.figsize: tuple[float, float] = (12.0, 9.0)
         self.fig: Any = None
         self.ax: Any = None
-        self.current_turn: int = 0
-        self.drone_locs: dict[int, dict[int, str]] = (
-            self._index_drone_locations()
-        )
+        self.current_turn = simulation.current_turn
+        self.current_locations = simulation.current_locations
         self.btn_next: Any = None
         self.drone_artists: list[tuple[Any, Any]] = []
 
-    def _index_drone_locations(self) -> dict[int, dict[int, str]]:
-        loc_map: dict[int, dict[int, str]] = {}
-        assert self.map_data.start_hub is not None
-        for drone_id in range(1, self.map_data.nb_drones + 1):
-            loc_map[drone_id] = {}
-            traj = self.result.paths[drone_id]
-            traj_dict = dict(traj)
-            curr_loc = self.map_data.start_hub.name
-            for turn in range(self.result.total_turns + 1):
-                if turn in traj_dict:
-                    curr_loc = traj_dict[turn]
-                loc_map[drone_id][turn] = curr_loc
-        return loc_map
-
     def _get_drone_coordinates(
-        self, drone_id: int, turn: int, hub_occupants: dict[str, list[int]]
+        self, drone_id: int, loc: str, hub_occupants: dict[str, list[int]]
     ) -> tuple[float, float]:
-        loc = self.drone_locs.get(drone_id, {}).get(turn, "")
         hubs = self.map_data.hubs
         if loc in hubs:
             hub = hubs[loc]
@@ -95,7 +85,7 @@ class Visualiser:
                 linewidth=3.5,
                 zorder=1,
             )
-        for name, hub in hubs.items():
+        for hub in hubs.values():
             color = hub.color if hub.color else "#000000"
             if color == "rainbow":
                 color = "#ff0000"  # Default to red for rainbow
@@ -112,38 +102,39 @@ class Visualiser:
     def _setup_interactive_widgets(self) -> None:
         ax_next = self.fig.add_axes([0.85, 0.05, 0.1, 0.075])
         self.btn_next = plt.Button(ax_next, "Next Turn")
-        self.btn_next.on_clicked(lambda event: self._on_next_turn())
+        self.btn_next.on_clicked(self._on_next_turn)
 
-    def _on_next_turn(self) -> None:
-        turn = (self.current_turn + 1) % (self.result.total_turns + 1)
-        self._update_turn_display(turn)
-        plt.gcf().canvas.draw()
-        plt.gcf().canvas.flush_events()
+    def _on_next_turn(self, event: MouseEvent) -> None:
+        snapshot = self.simulation.step()
+        if snapshot is None:
+            return
+        if self.on_turn is not None:
+            self.on_turn(snapshot)
+        self._update_turn_display(snapshot.turn)
+        if snapshot.finished:
+            label = "Complete" if snapshot.completed else "Stopped"
+            self.btn_next.label.set_text(label)
+        event.canvas.draw_idle()
 
     def _update_turn_display(self, turn: int) -> None:
         self.current_turn = turn
+        self.current_locations = self.simulation.current_locations
         for artist in self.drone_artists:
             artist[0].remove()  # Remove scatter
             artist[1].remove()  # Remove text label
         self.drone_artists.clear()
-        assert self.map_data.end_hub is not None
-        end_name = self.map_data.end_hub.name
         hub_occupants: dict[str, list[int]] = {
             h: [] for h in self.map_data.hubs
         }
-        transit_drones: list[tuple[int, str]] = []
-        drones_at_goal = 0
         for drone_id in range(1, self.map_data.nb_drones + 1):
-            loc = self.drone_locs.get(drone_id, {}).get(turn, "")
+            loc = self.current_locations[drone_id]
             if loc in hub_occupants:
                 hub_occupants[loc].append(drone_id)
-                if loc == end_name:
-                    drones_at_goal += 1
-            elif "-" in loc:
-                transit_drones.append((drone_id, loc))
         for drone_id in range(1, self.map_data.nb_drones + 1):
-            loc = self.drone_locs.get(drone_id, {}).get(turn, "")
-            dx, dy = self._get_drone_coordinates(drone_id, turn, hub_occupants)
+            loc = self.current_locations[drone_id]
+            dx, dy = self._get_drone_coordinates(
+                drone_id, loc, hub_occupants
+            )
             sc = self.ax.scatter(
                 dx,
                 dy,
@@ -164,6 +155,7 @@ class Visualiser:
                 zorder=4,
             )
             self.drone_artists.append((sc, lbl))
+        self.ax.set_title(f"Turn {turn}")
 
     def visualise(self) -> None:
         if self.fig is None:

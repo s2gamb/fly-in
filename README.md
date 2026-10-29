@@ -5,9 +5,9 @@
 ## Description
 
 Fly-In is a Python command-line simulator for routing multiple drones through a
-shared network of hubs. It plans turn-by-turn movement while respecting hub
-and connection capacities, blocked zones, and restricted corridors. It prints
-the schedule and opens an interactive map visualisation.
+shared network of hubs. It simulates turn-by-turn movement while respecting
+hub and connection capacities, blocked zones, and restricted corridors. It
+prints the moves and opens an interactive map visualisation.
 
 ## Instructions
 
@@ -19,9 +19,18 @@ python3 -m pip install -r requirements.txt
 python3 main.py maps/easy/01_linear_path.txt
 ```
 
-The schedule is printed to the terminal; close the visualisation window to
-exit. `make run ARGS=maps/medium/03_priority_puzzle.txt` runs another map.
+The map opens in an interactive window. Click **Next Turn** to schedule and
+execute one turn; that turn's moves are also printed in the terminal. Close
+the window to exit. `make run ARGS=maps/medium/03_priority_puzzle.txt` runs
+another map.
 `make lint` runs the configured Flake8 and mypy checks.
+
+The first routing iteration is a random walk. Pass `--seed` to reproduce a
+particular run:
+
+```bash
+python3 main.py --seed 42 maps/easy/03_basic_capacity.txt
+```
 
 ### Example
 
@@ -36,46 +45,36 @@ connection: start-relay
 connection: relay-goal
 ```
 
-Expected terminal schedule:
+Example successful sequence of clicks:
 
 ```text
 D1-relay
 D1-goal
 ```
 
-Each line lists the moves for one turn. A move token `D1-relay` means drone 1
-moves to relay; the visualiser launches after the schedule is printed.
+Each click produces one turn of moves. A token `D1-relay` means drone 1 moves
+to relay.
 
 ## Algorithm and implementation
 
-The solver converts the map into a **time-expanded graph**: every usable hub
-has an entry and exit node for each turn. Entry-to-exit edges enforce hub
-capacity; movement edges enforce connection capacity; wait edges let drones
-remain at a hub. Normal and priority links take one turn, while restricted
-links are represented by a transit node and take two. Blocked hubs are omitted.
-
-It then runs a **successive shortest augmenting path min-cost max-flow**
-algorithm. A queue-based shortest-path search finds an affordable route in the
-residual graph for each drone. Paired reverse edges have zero capacity and
-negative cost initially; as flow is sent, they allow earlier assignments to
-be undone or rerouted. The solver expands the time horizon until all drones
-can reach the destination or the configured maximum is reached.
-
-Finally, flow is decomposed into individual drone trajectories. The extracted
-moves are grouped by turn and sorted by drone ID to form the printed schedule.
+The first routing iteration is intentionally simple: clicking **Next Turn**
+asks each drone to pick a random neighboring hub from its current location.
+The chosen moves are applied immediately, then the visualizer redraws the new
+state. Blocked zones are excluded, hub and connection capacities are enforced,
+and restricted zones take two turns to cross. Drones take turns in rotating ID
+order, so capacity conflicts can make a drone wait. A run stops when all
+drones reach the goal, no moves are possible, or 100 turns have run; the seed
+option makes a random run reproducible.
 
 ## Visual representation
 
 The Matplotlib view places hubs at their configured coordinates, labels and
-colors them, and shows connections and drone locations. A next-turn control
-animates the schedule; drones sharing a hub are offset visually, and a drone
-in a restricted corridor is drawn between its two hubs. This makes the
-planned routes and timing easier to inspect.
+colors them, and shows connections and current drone locations. Each click
+advances the simulation before redrawing; drones sharing a hub are offset
+visually, and a drone in a restricted corridor is drawn between its two hubs.
 
 ## Resources
 
-- [Minimum-cost flow problem](https://en.wikipedia.org/wiki/Minimum-cost_flow_problem).
-- [Ford–Fulkerson algorithm](https://en.wikipedia.org/wiki/Ford%E2%80%93Fulkerson_algorithm).
 - [Python documentation](https://docs.python.org/3/) and
 - [Matplotlib documentation](https://matplotlib.org/stable/).
 
