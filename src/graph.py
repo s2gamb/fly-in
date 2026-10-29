@@ -17,6 +17,7 @@ class FlowEdge:
 
 class MCMFNetwork:
     def __init__(self) -> None:
+        # Network consist of the list of adjacent edges from each node
         self.adj: dict[str, list[FlowEdge]] = {}
 
     def add_edge(self, u: str, v: str, capacity: int, cost: float) -> None:
@@ -25,6 +26,7 @@ class MCMFNetwork:
         forward = FlowEdge(
             u=u,
             v=v,
+            # Initially full capacity
             capacity=capacity,
             flow=0,
             cost=cost,
@@ -33,6 +35,7 @@ class MCMFNetwork:
         backward = FlowEdge(
             u=v,
             v=u,
+            # Empty capacity for backward edge
             capacity=0,
             flow=0,
             cost=-cost,
@@ -43,9 +46,9 @@ class MCMFNetwork:
 
     def solve_mcmf(
         self, source: str, sink: str, target_flow: int
-    ) -> tuple[int, float]:
+    ) -> int:
         total_flow = 0
-        total_cost = 0.0
+        # Iterating by flow one by one
         while total_flow < target_flow:
             dist: dict[str, float] = {node: math.inf for node in self.adj}
             parent_edge: dict[str, FlowEdge | None] = {
@@ -58,28 +61,35 @@ class MCMFNetwork:
             while queue:
                 u = queue.popleft()
                 in_queue[u] = False
+                # Traverse adjacents nodes
                 for edge in self.adj[u]:
+                    # If the capacity allows and the distance optimal
                     if (
                         edge.capacity - edge.flow > 0
                         and dist[u] + edge.cost < dist[edge.v]
                     ):
+                        # Update distance
                         dist[edge.v] = dist[u] + edge.cost
                         parent_edge[edge.v] = edge
                         if not in_queue[edge.v]:
                             queue.append(edge.v)
                             in_queue[edge.v] = True
             if dist[sink] == math.inf:
+                # Can not reach sink
                 break
             curr = sink
+            # Traverse backward
             while curr != source:
                 p_edge = parent_edge[curr]
                 assert p_edge is not None
+                # Update edge flow
                 p_edge.flow += 1
+                # Update reverse edge flow
                 self.adj[p_edge.v][p_edge.rev_index].flow -= 1
                 curr = p_edge.u
+            # Successfully transfered one drone to sink
             total_flow += 1
-            total_cost += dist[sink]
-        return total_flow, total_cost
+        return total_flow
 
 
 class TimeExpandedGraph:
@@ -99,6 +109,7 @@ class TimeExpandedGraph:
         nb_drones = self.map_data.nb_drones
         assert self.map_data.start_hub is not None
         start_name = self.map_data.start_hub.name
+        # Always can move from SOURCE to start hub out on turn zero
         self.network.add_edge(
             self.source, f"{start_name}_out[0]", capacity=nb_drones, cost=0.0
         )
@@ -107,6 +118,7 @@ class TimeExpandedGraph:
                 zone = self._get_zone_type(hub)
                 if zone == "blocked":
                     continue
+                # Create new nodes for each hub for each turn
                 u_in = f"{name}_in[{t}]"
                 u_out = f"{name}_out[{t}]"
                 cap = (
@@ -114,12 +126,15 @@ class TimeExpandedGraph:
                     if hub.hub_type in ("start_hub", "end_hub")
                     else hub.max_drones
                 )
+                # We always can move from hub_in to hub_out
                 self.network.add_edge(u_in, u_out, capacity=cap, cost=0.0)
                 if hub.hub_type == "end_hub":
                     self.network.add_edge(
+                        # We always can move to SINK node
                         u_out, self.sink, capacity=nb_drones, cost=0.0
                     )
                 if t < self.max_turns and hub.hub_type != "end_hub":
+                    # And we can wait on that hub
                     self.network.add_edge(
                         u_out, f"{name}_in[{t+1}]", capacity=cap, cost=1.0
                     )
@@ -137,6 +152,7 @@ class TimeExpandedGraph:
                     if v_zone in ("normal", "priority"):
                         cost = 0.5 if v_zone == "priority" else 1.0
                         if t + 1 <= self.max_turns:
+                            # Default transition from hub to hub
                             self.network.add_edge(
                                 u_out,
                                 f"{v_name}_in[{t+1}]",
@@ -146,6 +162,7 @@ class TimeExpandedGraph:
                     elif v_zone == "restricted":
                         if t + 2 <= self.max_turns:
                             transit = f"transit_{u_name}->{v_name}[{t+1}]"
+                            # Transition via transit node cost 2 turns
                             self.network.add_edge(
                                 u_out, transit, capacity=link_cap, cost=1.0
                             )
