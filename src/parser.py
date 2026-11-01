@@ -26,6 +26,7 @@ class Hub:
     zone: str = "normal"
     color: str | None = None
     max_drones: int = 1
+    capacity: int = 0
 
 
 @dataclass
@@ -81,7 +82,12 @@ class MapParser:
                     f"Unknown directive or malformed line: '{line}'", line_num
                 )
         self._validate_map_data()
+        self._update_max_drones_for_start_end_hubs()
         return self.map_data
+
+    def _update_max_drones_for_start_end_hubs(self):
+        self.map_data.start_hub.max_drones = self.map_data.nb_drones
+        self.map_data.end_hub.max_drones = self.map_data.nb_drones
 
     def _validate_map_data(self) -> None:
         if self.map_data.nb_drones <= 0:

@@ -38,7 +38,7 @@ class DroneSimulation:
     def current_locations(self) -> dict[int, str]:
         return self.locations.copy()
 
-    def _get_neighbors(self, hub_name: str) -> list[tuple[str, Connection]]:
+    def _get_neighbors(self, hub_name: str) -> dict[str, Connection]:
         neighbors = {}
         for connection in self.map_data.connections:
             if connection.source == hub_name:
@@ -47,32 +47,29 @@ class DroneSimulation:
                 neighbors[connection.source] = connection
         return neighbors
 
-    def _next_hub_toward_goal(self, hub_name: str) -> str:
-        if hub_name == self.goal:
-            return hub_name
-        queue = collections.deque([hub_name])
-        previous = {}
+    def _next_hubs_toward_goal(self, hub_name: str) -> list[str]:
+        distances = {self.goal: 0}
+        queue = collections.deque([self.goal])
         while queue:
             current = queue.popleft()
-            if current == self.goal:
-                break
-            neighbors = self._get_neighbors(current)
-            for neighbor, connection in neighbors.items():
-                if neighbor not in previous:
+            for neighbor in self._get_neighbors(current):
+                if neighbor not in distances:
+                    distances[neighbor] = distances[current] + 1
                     queue.append(neighbor)
-                    previous[neighbor] = current
-        next_hub = self.goal
-        while previous[next_hub] != hub_name:
-            next_hub = previous[next_hub]
-        neighbors = self._get_neighbors(hub_name)
-        if neighbors[next_hub].capacity < neighbors[next_hub].max_link_capacity:
-            neighbors[next_hub].capacity += 1
-            return next_hub
-        return hub_name
+        if hub_name not in distances:
+            raise ValueError(f"No route from hub '{hub_name}' to '{self.goal}'.")
+        return [
+            neighbor
+            for neighbor in self._get_neighbors(hub_name)
+            if distances.get(neighbor) == distances[hub_name] - 1
+        ]
 
     def _reset_connection_capacities(self):
         for connection in self.map_data.connections:
             connection.capacity = 0
+
+    def _get_hub(self, hub_name):
+        return self.map_data.hubs[hub_name]
 
     def step(self) -> TurnSnapshot | None:
         if self.finished:
@@ -82,8 +79,21 @@ class DroneSimulation:
         moves: list[str] = []
         for drone_id in range(1, self.map_data.nb_drones + 1):
             location = self.locations[drone_id]
-            next_location = self._next_hub_toward_goal(location)
-            next_locations[drone_id] = next_location
+            if location == self.goal:
+                continue
+            neighbor_locations: list[str] = self._next_hubs_toward_goal(location)
+            neighbors = self._get_neighbors(location)
+            next_location = location
+            for next_hub in neighbor_locations:
+                prev_hub = self._get_hub(location)
+                hub = self._get_hub(next_hub)
+                if neighbors[next_hub].capacity < neighbors[next_hub].max_link_capacity and hub.capacity < hub.max_drones:
+                    hub.capacity += 1
+                    prev_hub.capacity -= 1
+                    neighbors[next_hub].capacity += 1
+                    next_location = next_hub
+                    next_locations[drone_id] = next_location
+                    break
             if next_location != location:
                 moves.append(f"D{drone_id}-{next_location}")
         self.locations = next_locations
