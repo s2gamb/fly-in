@@ -4,11 +4,11 @@ PYTHON ?= python3
 PIP ?= pip3
 ARGS ?= maps/easy/01_linear_path.txt
 
-install:
-	$(PIP) install -r requirements.txt
-
 run:
 	$(PYTHON) main.py $(ARGS)
+
+install:
+	$(PIP) install -r requirements.txt
 
 debug:
 	$(PYTHON) -m pdb main.py $(ARGS)

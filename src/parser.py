@@ -33,6 +33,7 @@ class Connection:
     source: str
     target: str
     max_link_capacity: int = 1
+    capacity: int = 0
 
 
 @dataclass

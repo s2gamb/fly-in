@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 import collections
-import time
 
-from src.parser import MapData
+from src.parser import MapData, Connection
 
 
 @dataclass
@@ -34,56 +33,70 @@ class DroneSimulation:
             location == self.goal for location in self.locations.values()
         )
         self.finished = self.completed
-        self._next_hub_toward_goal(self.map_data.start_hub.name)
 
     @property
     def current_locations(self) -> dict[int, str]:
         return self.locations.copy()
 
-    def _get_neighbors(self, hub_name: str) -> list[str]:
-        neighbors = []
+    def _get_neighbors(self, hub_name: str) -> list[tuple[str, Connection]]:
+        neighbors = {}
         for connection in self.map_data.connections:
             if connection.source == hub_name:
-                neighbors.append(connection.target)
+                neighbors[connection.target] = connection
             if connection.target == hub_name:
-                neighbors.append(connection.source)
+                neighbors[connection.source] = connection
         return neighbors
 
     def _next_hub_toward_goal(self, hub_name: str) -> str:
+        if hub_name == self.goal:
+            return hub_name
         queue = collections.deque([hub_name])
-        in_queue = {hub: False for hub in self.map_data.hubs}
-        in_queue[hub_name] = True
-        prev = {hub: None for hub in self.map_data.hubs}
+        previous = {}
         while queue:
-            print(queue)
             current = queue.popleft()
-            if current == self.map_data.end_hub.name:
+            if current == self.goal:
                 break
             neighbors = self._get_neighbors(current)
-            for neighbor in neighbors:
-                if not in_queue[neighbor]:
+            for neighbor, connection in neighbors.items():
+                if neighbor not in previous:
                     queue.append(neighbor)
-                    in_queue[neighbor] = True
-                    prev[neighbor] = current
-            time.sleep(1)
-        if current == self.map_data.end_hub.name:
-            print("Found end hub")
-        # Go back
-        while prev[current] != self.map_data.start_hub.name:
-            current = prev[current]
-        return current
+                    previous[neighbor] = current
+        next_hub = self.goal
+        while previous[next_hub] != hub_name:
+            next_hub = previous[next_hub]
+        neighbors = self._get_neighbors(hub_name)
+        if neighbors[next_hub].capacity < neighbors[next_hub].max_link_capacity:
+            neighbors[next_hub].capacity += 1
+            return next_hub
+        return hub_name
+
+    def _reset_connection_capacities(self):
+        for connection in self.map_data.connections:
+            connection.capacity = 0
 
     def step(self) -> TurnSnapshot | None:
         if self.finished:
             return None
         self.current_turn += 1
-        moves = None
+        next_locations = self.current_locations
+        moves: list[str] = []
+        for drone_id in range(1, self.map_data.nb_drones + 1):
+            location = self.locations[drone_id]
+            next_location = self._next_hub_toward_goal(location)
+            next_locations[drone_id] = next_location
+            if next_location != location:
+                moves.append(f"D{drone_id}-{next_location}")
+        self.locations = next_locations
+        self._reset_connection_capacities()
+        self.completed = all(
+            location == self.goal for location in self.locations.values()
+        )
         self.finished = (
             self.completed or self.current_turn >= self.max_turns
         )
         return TurnSnapshot(
             turn=self.current_turn,
-            moves=moves,
+            moves=" ".join(moves),
             locations=self.current_locations,
             finished=self.finished,
             completed=self.completed,
