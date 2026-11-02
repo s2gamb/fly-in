@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-import collections
+import heapq
 
-from src.parser import MapData, Connection
+from src.parser import MapData, Connection, Hub
 
 
 @dataclass
@@ -48,27 +48,44 @@ class DroneSimulation:
         return neighbors
 
     def _next_hubs_toward_goal(self, hub_name: str) -> list[str]:
-        distances = {self.goal: 0}
-        queue = collections.deque([self.goal])
+        if self._get_hub(self.goal).zone == "blocked":
+            distances = {}
+            queue = []
+        else:
+            distances = {self.goal: 0}
+            queue = [(0, self.goal)]
         while queue:
-            current = queue.popleft()
+            distance, current = heapq.heappop(queue)
+            if distance != distances[current]:
+                continue
+            movement_cost = (
+                2 if self._get_hub(current).zone == "restricted" else 1
+            )
             for neighbor in self._get_neighbors(current):
-                if neighbor not in distances:
-                    distances[neighbor] = distances[current] + 1
-                    queue.append(neighbor)
+                if self._get_hub(neighbor).zone == "blocked":
+                    continue
+                neighbor_distance = distance + movement_cost
+                if neighbor_distance < distances.get(neighbor, float("inf")):
+                    distances[neighbor] = neighbor_distance
+                    heapq.heappush(queue, (neighbor_distance, neighbor))
         if hub_name not in distances:
-            raise ValueError(f"No route from hub '{hub_name}' to '{self.goal}'.")
+            raise ValueError(
+                f"No route from hub '{hub_name}' to '{self.goal}'."
+            )
         return [
             neighbor
             for neighbor in self._get_neighbors(hub_name)
-            if distances.get(neighbor) == distances[hub_name] - 1
+            if self._get_hub(neighbor).zone != "blocked"
+            and distances.get(neighbor, float("inf"))
+            + (2 if self._get_hub(neighbor).zone == "restricted" else 1)
+            == distances[hub_name]
         ]
 
-    def _reset_connection_capacities(self):
+    def _reset_connection_capacities(self) -> None:
         for connection in self.map_data.connections:
             connection.capacity = 0
 
-    def _get_hub(self, hub_name):
+    def _get_hub(self, hub_name: str) -> Hub:
         return self.map_data.hubs[hub_name]
 
     def step(self) -> TurnSnapshot | None:
@@ -81,17 +98,36 @@ class DroneSimulation:
             location = self.locations[drone_id]
             if location == self.goal:
                 continue
-            neighbor_locations: list[str] = self._next_hubs_toward_goal(location)
+            if "-" in location:
+                source, target = location.split("-", 1)
+                neighbors = self._get_neighbors(target)
+                connection = neighbors[source]
+                if connection.capacity < connection.max_link_capacity:
+                    connection.capacity += 1
+                    next_locations[drone_id] = target
+                    moves.append(f"D{drone_id}-{target}")
+                continue
+            neighbor_locations: list[str] = (
+                self._next_hubs_toward_goal(location)
+            )
             neighbors = self._get_neighbors(location)
             next_location = location
             for next_hub in neighbor_locations:
                 prev_hub = self._get_hub(location)
                 hub = self._get_hub(next_hub)
-                if neighbors[next_hub].capacity < neighbors[next_hub].max_link_capacity and hub.capacity < hub.max_drones:
+                connection = neighbors[next_hub]
+                if (
+                    connection.capacity < connection.max_link_capacity
+                    and hub.capacity < hub.max_drones
+                ):
                     hub.capacity += 1
                     prev_hub.capacity -= 1
-                    neighbors[next_hub].capacity += 1
-                    next_location = next_hub
+                    connection.capacity += 1
+                    next_location = (
+                        f"{location}-{next_hub}"
+                        if hub.zone == "restricted"
+                        else next_hub
+                    )
                     next_locations[drone_id] = next_location
                     break
             if next_location != location:

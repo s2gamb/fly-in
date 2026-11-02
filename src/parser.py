@@ -85,9 +85,13 @@ class MapParser:
         self._update_max_drones_for_start_end_hubs()
         return self.map_data
 
-    def _update_max_drones_for_start_end_hubs(self):
-        self.map_data.start_hub.max_drones = self.map_data.nb_drones
-        self.map_data.end_hub.max_drones = self.map_data.nb_drones
+    def _update_max_drones_for_start_end_hubs(self) -> None:
+        start_hub = self.map_data.start_hub
+        end_hub = self.map_data.end_hub
+        assert start_hub is not None
+        assert end_hub is not None
+        start_hub.max_drones = self.map_data.nb_drones
+        end_hub.max_drones = self.map_data.nb_drones
 
     def _validate_map_data(self) -> None:
         if self.map_data.nb_drones <= 0:
